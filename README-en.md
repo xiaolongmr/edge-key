@@ -1,7 +1,7 @@
 [![English](https://img.shields.io/badge/English-Click-yellow)](README-en.md)
 [![中文文档](https://img.shields.io/badge/中文文档-点击查看-orange)](README.md)
 
-# EdgeKey
+#  EdgeKey
 
 EdgeKey is a full-stack card key shop system built with the Vike framework, deployable directly to Cloudflare. The same codebase includes frontend pages, SSR rendering, and backend API endpoints, all running on Cloudflare Workers.
 
