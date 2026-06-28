@@ -1,6 +1,6 @@
 export type EmailChannel = "API" | "SMTP" | "CLOUDFLARE";
 
-export type EmailApiProvider = "BREVO" | "MAILJET";
+export type EmailApiProvider = string;
 
 export type EmailScene = "TEST" | "ORDER_PAID" | "DELIVERY_SUCCESS" | "DELIVERY_FAILED";
 
@@ -24,7 +24,6 @@ export interface EmailApiConfigValue extends EmailPushFlags {
   replyTo?: string;
   apiBaseUrl: string;
   apiKey?: string;
-  secretKey?: string;
   timeoutMs?: number;
 }
 
@@ -66,6 +65,47 @@ export interface EmailTemplateValue {
   content: string;
   isEnabled: boolean;
 }
+
+export interface EmailTemplateVariable {
+  name: string;
+  description: string;
+}
+
+export const EMAIL_TEMPLATE_VARIABLES: Record<EmailScene, EmailTemplateVariable[]> = {
+  TEST: [
+    { name: "siteName", description: "站点名称（来自站点设置）" },
+    { name: "sentAt", description: "发送时间" },
+    { name: "customContent", description: "自定义内容" },
+  ],
+  ORDER_PAID: [
+    { name: "siteName", description: "站点名称（来自站点设置）" },
+    { name: "orderNo", description: "订单号" },
+    { name: "productName", description: "商品名称" },
+    { name: "amount", description: "订单金额" },
+    { name: "buyerNote", description: "买家备注" },
+    { name: "queryUrl", description: "订单查询地址" },
+    { name: "footerText", description: "页脚文本（来自站点设置）" },
+  ],
+  DELIVERY_SUCCESS: [
+    { name: "siteName", description: "站点名称（来自站点设置）" },
+    { name: "orderNo", description: "订单号" },
+    { name: "productName", description: "商品名称" },
+    { name: "quantity", description: "购买数量" },
+    { name: "buyerNote", description: "买家备注" },
+    { name: "deliveryItems", description: "发货内容" },
+    { name: "queryUrl", description: "订单查询地址" },
+    { name: "supportContact", description: "客服联系方式（来自站点设置）" },
+  ],
+  DELIVERY_FAILED: [
+    { name: "siteName", description: "站点名称（来自站点设置）" },
+    { name: "orderNo", description: "订单号" },
+    { name: "productName", description: "商品名称" },
+    { name: "buyerNote", description: "买家备注" },
+    { name: "errorMessage", description: "失败原因" },
+    { name: "queryUrl", description: "订单查询地址" },
+    { name: "supportContact", description: "客服联系方式（来自站点设置）" },
+  ],
+};
 
 export interface EmailLogItem {
   id: number;

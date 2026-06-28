@@ -25,11 +25,11 @@
             <div class="text-sm text-base-content/60">当前价格</div>
             <div class="text-3xl font-bold text-primary">{{ formatCents(product.price) }}</div>
           </div>
-          <dev class="flex">
+          <div class="flex">
               <!-- <div class="text-sm text-base-content/70">限购 {{ product.minBuy }} - {{ product.maxBuy }} 件</div> -->
               <div class="text-sm text-base-content/70">限购 {{ product.maxBuy }} 件，</div>
               <div class="text-sm text-base-content/70">发货方式：{{ getDeliveryTypeLabel(product.deliveryType) }}</div>
-          </dev>
+          </div>
           <div class="divider my-0"></div>
 
           <label class="flex flex-col gap-1.5">
@@ -44,11 +44,33 @@
           </label>
 
           <label class="flex flex-col gap-1.5">
+            <span class="label-text font-medium">折扣码</span>
+            <div class="flex gap-2">
+              <input 
+                v-model="form.discountCode" 
+                type="text" 
+                class="input input-bordered flex-1" 
+                placeholder="输入折扣码（可选）"
+                :disabled="discountPreview.loading"
+              />
+              <button 
+                class="btn btn-outline btn-sm" 
+                :disabled="!form.discountCode.trim() || discountPreview.loading"
+                @click="handlePreviewDiscount"
+              >
+                {{ discountPreview.loading ? '验证中...' : '验证' }}
+              </button>
+            </div>
+          </label>
+          <p v-if="discountPreview.error" class="-mt-2 text-xs text-error">{{ discountPreview.error }}</p>
+          <p v-if="discountPreview.valid" class="-mt-2 text-xs text-orange-400">折扣码有效，优惠 {{ formatCents(discountPreview.discount) }}</p>
+
+          <label class="flex flex-col gap-1.5">
             <span class="label-text font-medium">备注</span>
             <textarea v-model="form.buyerNote" class="textarea textarea-bordered w-full" rows="3" placeholder="可以留下QQ号、微信等联系方式"></textarea>
           </label>
 
-          <div class="space-y-2">
+          <div v-if="!isFreeOrder" class="space-y-2">
             <div class="text-sm font-medium">支付方式</div>
             <div class="grid gap-3">
               <label v-for="method in paymentMethods" :key="method.provider" class="rounded-box border border-base-300 p-4">
@@ -60,7 +82,7 @@
             </div>
           </div>
 
-          <div v-if="form.paymentProvider === 'EPAY'" class="space-y-2">
+          <div v-if="!isFreeOrder && form.paymentProvider === 'EPAY'" class="space-y-2">
             <div class="text-sm font-medium">易支付渠道</div>
             <div class="grid gap-3 md:grid-cols-2">
               <label v-for="channel in epayChannels" :key="channel.value" class="rounded-box border border-base-300 p-4">
@@ -85,7 +107,21 @@
             </div>
           </div>
 
-
+          <div v-if="discountPreview.valid" class="rounded-box bg-base-200 p-4 space-y-2">
+            <div class="flex justify-between text-sm">
+              <span class="text-base-content/70">商品总价</span>
+              <span>{{ formatCents(product.price * form.quantity) }}</span>
+            </div>
+            <div class="flex justify-between text-sm text-orange-400">
+              <span>折扣优惠</span>
+              <span>-{{ formatCents(discountPreview.discount) }}</span>
+            </div>
+            <div class="divider my-0"></div>
+            <div class="flex justify-between font-bold">
+              <span>实付金额</span>
+              <span class="text-primary">{{ formatCents(discountPreview.finalAmount) }}</span>
+            </div>
+          </div>
 
           <p v-if="product.deliveryType === 'CARD_AUTO' && product.availableStock >= 0 && product.availableStock < 10" class="text-sm" :class="product.availableStock === 0 ? 'text-error' : 'text-warning'">
             {{ product.availableStock === 0 ? '商品都卖光了，看看其他商品' : `库存紧张，仅剩 ${product.availableStock} 件` }}
@@ -93,10 +129,10 @@
           <p v-else-if="product.deliveryType === 'FIXED_CARD'" class="text-sm text-success">自动发货，库存充足。</p>
           <p v-else-if="product.deliveryType === 'MANUAL'" class="text-sm text-success">{{ product.manualDeliveryHint || '支付后，客服将尽快为您处理订单，请耐心等待。' }}</p>
 
-          <AppButton variant="primary" :loading="submitting" :disabled="!paymentMethods.length || (product.deliveryType === 'CARD_AUTO' && product.availableStock === 0)" @click="handleCreateOrder">
-            {{ product.deliveryType === 'CARD_AUTO' && product.availableStock === 0 ? '已售罄' : '提交订单' }}
+          <AppButton variant="primary" :loading="submitting" :disabled="(!isFreeOrder && !paymentMethods.length) || (product.deliveryType === 'CARD_AUTO' && product.availableStock === 0)" @click="handleCreateOrder">
+            {{ product.deliveryType === 'CARD_AUTO' && product.availableStock === 0 ? '已售罄' : isFreeOrder ? '免费获取' : '提交订单' }}
           </AppButton>
-          <p v-if="!paymentMethods.length" class="text-sm text-warning">当前没有可用支付方式，请联系管理员启用支付配置。</p>
+          <p v-if="!isFreeOrder && !paymentMethods.length" class="text-sm text-warning">当前没有可用支付方式，请联系管理员启用支付配置。</p>
           <p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
         </div>
       </div>
@@ -107,11 +143,12 @@
 <script setup lang="ts">
 import AppButton from "../../../components/AppButton.vue";
 import { normalizeTelefuncError } from "../../../lib/app-error";
-import { reactive, ref } from "vue";
+import { reactive, ref, computed } from "vue";
 import { useData } from "vike-vue/useData";
 import { isEmail } from "../../../lib/validators/email";
 import { formatCents } from "../../../lib/utils/money";
 import { onCreateOrder } from "./createOrder.telefunc";
+import { onPreviewDiscount } from "./previewDiscount.telefunc";
 import type { PaymentProvider } from "../../../modules/payment/types";
 import { isMobile } from "../../../lib/utils/device";
 import { onMounted, watch } from "vue";
@@ -128,10 +165,19 @@ const epayChannels = [
   { value: "wxpay", label: "微信", icon: "wechat" },
 ] as const;
 
+const discountPreview = reactive({
+  loading: false,
+  valid: false,
+  error: "",
+  discount: 0,
+  finalAmount: 0,
+});
+
 const form = reactive({
   quantity: product?.minBuy ?? 1,
   contactValue: "",
   buyerNote: "",
+  discountCode: "",
   paymentProvider: paymentMethods[0]?.provider ?? "",
   paymentChannel: getDefaultPaymentChannel(paymentMethods[0]?.provider ?? ""),
 });
@@ -145,6 +191,7 @@ let mobile = false;
 function getDefaultPaymentChannel(provider: PaymentProvider | "") {
   if (provider === "EPAY") return "alipay";
   if (provider === "ALIPAY") return mobile ? "alipay_h5" : "alipay_pc";
+  if (provider === "ALIPAY_FACE") return "";
   return "";
 }
 
@@ -157,12 +204,47 @@ watch(() => form.paymentProvider, (provider) => {
   form.paymentChannel = getDefaultPaymentChannel(provider);
 });
 
+watch(() => form.discountCode, () => {
+  discountPreview.valid = false;
+  discountPreview.error = "";
+  discountPreview.discount = 0;
+  discountPreview.finalAmount = 0;
+});
+
 const descriptionHtml = formatDescriptionHtml(product?.description || "");
+
+const isFreeOrder = computed(() => {
+  return discountPreview.valid && discountPreview.finalAmount === 0;
+});
+
+async function handlePreviewDiscount() {
+  if (!product || !form.discountCode.trim()) return;
+
+  discountPreview.loading = true;
+  discountPreview.error = "";
+  discountPreview.valid = false;
+
+  try {
+    const result = await onPreviewDiscount(form.discountCode, product.id, product.price * form.quantity);
+    if (result.valid) {
+      discountPreview.valid = true;
+      discountPreview.discount = result.discount;
+      discountPreview.finalAmount = result.finalAmount;
+    } else {
+      discountPreview.error = result.error;
+    }
+  } catch (error) {
+    discountPreview.error = "验证失败，请重试";
+  } finally {
+    discountPreview.loading = false;
+  }
+}
 
 async function handleCreateOrder() {
   if (!product || submitting.value) return;
 
-  if (!form.paymentProvider) {
+  // 免费订单不需要支付方式
+  if (!isFreeOrder.value && !form.paymentProvider) {
     errorMessage.value = "当前没有可用支付方式，请联系管理员启用支付配置。";
     return;
   }
@@ -182,14 +264,18 @@ async function handleCreateOrder() {
   errorMessage.value = "";
 
   try {
+    // 免费订单使用 FREE_PAY 作为占位符（服务端会跳过支付）
+    const paymentProvider = isFreeOrder.value ? "FREE_PAY" : form.paymentProvider;
+    
     const result = await onCreateOrder({
       productId: product.id,
       quantity: form.quantity,
-      paymentProvider: form.paymentProvider,
-      paymentChannel: form.paymentProvider === "EPAY" || form.paymentProvider === "ALIPAY" ? form.paymentChannel : undefined,
+      paymentProvider,
+      paymentChannel: paymentProvider === "EPAY" || paymentProvider === "ALIPAY" ? form.paymentChannel : undefined,
       contactType: "EMAIL",
       contactValue: contactEmail,
       buyerNote: form.buyerNote,
+      discountCode: form.discountCode.trim() || undefined,
     });
 
     saveLocalOrder({
@@ -201,7 +287,7 @@ async function handleCreateOrder() {
       paymentStatus: result.paymentStatus ?? 'UNPAID',
     });
 
-    if (result.payUrl) {
+    if (result.payUrl && form.paymentProvider !== 'ALIPAY_FACE') {
       window.location.href = result.payUrl;
       return;
     }

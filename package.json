@@ -1,5 +1,5 @@
 {
-  "version": "1.3.5",
+  "version": "1.4.6",
   "scripts": {
     "dev": "vike dev",
     "build": "bun run db:generate && vike build",
@@ -53,5 +53,5 @@
     "vite": "^7.3.1",
     "wrangler": "^4.74.0"
   },
-  "type": "module","name": "edge-key"
+  "type": "module"
 }

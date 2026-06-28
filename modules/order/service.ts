@@ -6,9 +6,11 @@ import { validateOrderInput } from "../../lib/validators/order";
 import { getAdminContext, logAdminOperation } from "../auth/service";
 import { getAdminProductById } from "../catalog/service";
 import { createPaymentForOrder, handlePaymentNotify } from "../payment/service";
+import { deliverOrder } from "../delivery/service";
 import { closeOrderRecord, createOrderRecord, findOrderById, findOrderWithProduct, listOrderRecords } from "./repository";
 import { generateOrderNo, generateQueryToken } from "./number";
 import { logger } from "../../lib/logger";
+import { validateDiscountCode, calculateDiscount, applyDiscountCode } from "../discount/service";
 
 function getOrderContext() {
   return getContext<{ prisma: PrismaClient }>();
@@ -45,6 +47,7 @@ export async function createOrder(input: {
   contactType: "EMAIL" | "QQ" | "TELEGRAM" | "OTHER";
   contactValue?: string;
   buyerNote?: string;
+  discountCode?: string;
 }) {
   const { prisma } = getOrderContext();
   const { contactValue } = validateOrderInput(input);
@@ -82,6 +85,94 @@ export async function createOrder(input: {
     paymentChannel = input.paymentChannel ?? "alipay_h5";
   }
 
+  const originalAmount = product.price * quantity;
+  let discountAmount = 0;
+  let discountCodeId: number | null = null;
+  let discountCodeStr: string | null = null;
+
+  if (input.discountCode?.trim()) {
+    const discountCode = await validateDiscountCode(input.discountCode, product.id, originalAmount, prisma);
+    discountAmount = calculateDiscount(discountCode.type, discountCode.value, originalAmount);
+    discountCodeId = discountCode.id;
+    discountCodeStr = discountCode.code;
+  }
+
+  const amount = Math.max(0, originalAmount - discountAmount);
+
+  // 0 元订单直接标记为已支付并发货，跳过支付流程
+  if (amount === 0) {
+    const order = await createOrderRecord(prisma, {
+      orderNo,
+      queryToken,
+      productId: product.id,
+      productNameSnapshot: product.name,
+      unitPrice: product.price,
+      quantity,
+      amount: 0,
+      contactType: input.contactType,
+      contactValue,
+      buyerNote: input.buyerNote?.trim() || null,
+      paymentProvider: input.paymentProvider,
+      paymentChannel,
+      discountCodeId,
+      discountCodeStr,
+      originalAmount: discountAmount > 0 ? originalAmount : null,
+      discountAmount: discountAmount > 0 ? discountAmount : null,
+    });
+
+    // 标记为已支付
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: "PAID",
+        paymentStatus: "PAID",
+        paidAt: new Date(),
+      },
+    });
+
+    // 记录 0 元订单支付日志
+    await prisma.paymentLog.create({
+      data: {
+        orderId: order.id,
+        provider: input.paymentProvider,
+        orderNo,
+        eventType: "FREE_ORDER",
+        rawPayload: JSON.stringify({ amount: 0, discountCode: discountCodeStr, discountAmount }),
+        verifyStatus: "VERIFIED",
+        message: "0 元订单，自动完成",
+      },
+    });
+
+    // 递增折扣码使用次数
+    if (discountCodeId) {
+      await applyDiscountCode(discountCodeId, prisma);
+    }
+
+    // 执行发货
+    try {
+      await deliverOrder(prisma, order.orderNo);
+    } catch (error) {
+      logger.error(error instanceof Error ? error : new Error(String(error)), {
+        event: "order.free_delivery_failed",
+        orderNo,
+      });
+    }
+
+    return {
+      id: order.id,
+      orderNo: order.orderNo,
+      queryToken: order.queryToken,
+      amount: 0,
+      originalAmount: order.originalAmount,
+      discountAmount: order.discountAmount,
+      discountCodeStr: order.discountCodeStr,
+      paymentProvider: order.paymentProvider,
+      paymentChannel: order.paymentChannel,
+      paymentStatus: "PAID" as const,
+      payUrl: undefined,
+    };
+  }
+
   const order = await createOrderRecord(prisma, {
     orderNo,
     queryToken,
@@ -89,24 +180,46 @@ export async function createOrder(input: {
     productNameSnapshot: product.name,
     unitPrice: product.price,
     quantity,
-    amount: product.price * quantity,
+    amount,
     contactType: input.contactType,
     contactValue,
     buyerNote: input.buyerNote?.trim() || null,
     paymentProvider: input.paymentProvider,
     paymentChannel,
+    discountCodeId,
+    discountCodeStr,
+    originalAmount: discountAmount > 0 ? originalAmount : null,
+    discountAmount: discountAmount > 0 ? discountAmount : null,
   });
 
-  return {
-    id: order.id,
-    orderNo: order.orderNo,
-    queryToken: order.queryToken,
-    amount: order.amount,
-    paymentProvider: order.paymentProvider,
-    paymentChannel: order.paymentChannel,
-    paymentStatus: order.paymentStatus,
-    ...(await createPaymentForOrder(order.orderNo, prisma)),
-  };
+  try {
+    const paymentResult = await createPaymentForOrder(order.orderNo, prisma);
+
+    // 支付创建成功后再递增折扣码使用次数
+    if (discountCodeId) {
+      await applyDiscountCode(discountCodeId, prisma);
+    }
+
+    return {
+      id: order.id,
+      orderNo: order.orderNo,
+      queryToken: order.queryToken,
+      amount: order.amount,
+      originalAmount: order.originalAmount,
+      discountAmount: order.discountAmount,
+      discountCodeStr: order.discountCodeStr,
+      paymentProvider: order.paymentProvider,
+      paymentChannel: order.paymentChannel,
+      paymentStatus: order.paymentStatus,
+      ...paymentResult,
+    };
+  } catch (error) {
+    await prisma.order.delete({
+      where: { id: order.id },
+    }).catch(e => logger.error("Failed to delete order after payment creation failed:", e));
+    
+    throw error;
+  }
 }
 
 export async function getOrderForQuery(
@@ -166,6 +279,9 @@ export async function getOrderForQuery(
     productName: order.productNameSnapshot,
     quantity: order.quantity,
     amount: order.amount,
+    originalAmount: order.originalAmount,
+    discountAmount: order.discountAmount,
+    discountCodeStr: order.discountCodeStr,
     paymentProvider: order.paymentProvider,
     productSlug: order.product.slug,
     createdAt: order.createdAt.toISOString(),
@@ -226,6 +342,9 @@ export async function getAdminOrders(prisma?: PrismaClient) {
     orderNo: order.orderNo,
     productName: order.productNameSnapshot,
     amount: order.amount,
+    originalAmount: order.originalAmount,
+    discountAmount: order.discountAmount,
+    discountCodeStr: order.discountCodeStr,
     quantity: order.quantity,
     paymentProvider: order.paymentProvider,
     status: order.status,
@@ -327,6 +446,9 @@ export async function getAdminOrderById(id: number, prisma?: PrismaClient) {
     productName: order.productNameSnapshot,
     productDeliveryType: order.product.deliveryType,
     amount: order.amount,
+    originalAmount: order.originalAmount,
+    discountAmount: order.discountAmount,
+    discountCodeStr: order.discountCodeStr,
     quantity: order.quantity,
     paymentProvider: order.paymentProvider,
     paymentChannel: order.paymentChannel,

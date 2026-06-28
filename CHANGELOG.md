@@ -1,5 +1,77 @@
 # Change Log
 
+## v1.4.6 (2026-06-21)
+
+### Features
+
+- **catalog:** 首页商品列表改为无限滚动加载，每批加载 16 个商品
+- **catalog:** 新增分页查询接口支持分类筛选
+
+### Bug Fixes
+
+- **catalog:** 修复首页商品卡片最多展示12个的问题
+
+## v1.4.5 (2026-06-16)
+
+### Features
+
+- **payment:** 新增支付宝当面付(订单码)支付方式
+- **order:** 新增 0 元订单支持,使用 100% 折扣码时自动跳过支付流程并直接发货
+
+### Security
+
+- **order:** 0 元订单金额使用 Math.max(0,...) 防止负数篡改
+- **order:** 折扣码验证和金额计算均在服务端完成,不信任前端数据
+- **order:** 记录免费订单支付日志(FREE_ORDER 事件)用于审计追踪
+
+## v1.4.4 (2026-06-01)
+
+### Bug Fixes
+
+- **auth:** 修复通过 CDN 反向代理访问时，后台登录重定向被跳转到源站域名的问题，Auth.js 现优先使用站点设置中配置的网站地址
+
+## v1.4.3 (2026-05-26)
+
+### Features
+
+- **security:** 新增后台双重认证，支持身份验证器 App 绑定、QuickChart 二维码、登录 TOTP 校验与遗忘 2FA 恢复说明 ([9aca5c9](https://github.com/34892002/edgeKey/commit/9aca5c9))
+
+### Bug Fixes
+
+- **auth:** 加强后台鉴权相关处理，敏感信息处理 ([c09f2fb](https://github.com/34892002/edgeKey/commit/c09f2fb))
+- **docs:** 修正文档与发布说明勘误 ([1980c7a](https://github.com/34892002/edgeKey/commit/1980c7a))
+
+## v1.4.1 (2026-05-21)
+
+### Features
+
+- **discount:** 新增商品折扣码功能，支持为商品配置折扣优惠 ([0a25d08](https://github.com/34892002/edgeKey/commit/0a25d08))
+- **email:** 邮件模版变量展示，支持在邮件内容中使用变量 ([8079e8f](https://github.com/34892002/edgeKey/commit/8079e8f))
+- **email:** 新增邮件服务商 resend，移除mailJet
+- **ui:** 后台菜单重构为集中配置管理，支持根据当前路径自动展开/高亮 ([b79bd34](https://github.com/34892002/edgeKey/commit/b79bd34))
+- **ui:** 面包屑导航优化，自动关联菜单层级 ([b79bd34](https://github.com/34892002/edgeKey/commit/b79bd34))
+- **security:** 安全设置页展示 Turnstile 配置状态，实时检测是否已启用
+
+### Bug Fixes
+
+- **media:** 修复 FilePickerModal 组件过早加载上传图片的问题 ([4d69df2](https://github.com/34892002/edgeKey/commit/4d69df2))
+- **email:** 修复发送邮件备注缺失的问题 ([8079e8f](https://github.com/34892002/edgeKey/commit/8079e8f))
+- **product:** 修复商品详情页显示问题 ([2769c6d](https://github.com/34892002/edgeKey/commit/2769c6d))
+
+## v1.3.6 (2026-05-17)
+
+### Improvements
+
+- **email:** 邮件日志列表添加分页功能 ([cd08233](https://github.com/34892002/edgeKey/commit/cd08233))
+- **order:** 优化订单列表状态显示，仅展示订单状态，隐藏支付状态和发货状态，简化界面 ([8eb2cd5](https://github.com/34892002/edgeKey/commit/8eb2cd5))
+- **order:** 完善订单筛选功能，支持按订单状态（待处理、已支付、已发货、已关闭、失败）筛选 ([8eb2cd5](https://github.com/34892002/edgeKey/commit/8eb2cd5))
+- **order:** 完善支付方式筛选器，补充 Stripe ([8eb2cd5](https://github.com/34892002/edgeKey/commit/8eb2cd5))
+
+### Bug Fixes
+
+- **payment:** 修复支付失败但订单已创建的问题 ([961e07b](https://github.com/34892002/edgeKey/commit/961e07b))
+- **database:** 修复数据库迁移问题 ([9d83b78](https://github.com/34892002/edgeKey/commit/9d83b78))
+
 ## v1.3.5 (2026-05-13)
 
 ### Features

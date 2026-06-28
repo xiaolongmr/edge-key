@@ -152,7 +152,7 @@
           <!-- 名称 -->
           <label class="flex flex-col gap-1.5">
             <span class="label-text font-medium">邮局名称 (可选，留空自动生成)</span>
-            <input v-model="configForm.name" class="input input-bordered w-full" placeholder="例如：Mailjet 主账号" />
+            <input v-model="configForm.name" class="input input-bordered w-full" placeholder="例如：Resend 主账号" />
           </label>
 
           <!-- 类型选择 -->
@@ -173,7 +173,7 @@
               <span class="label-text font-medium">API 服务商</span>
               <select v-model="configForm.apiProvider" class="select select-bordered w-full">
                 <option value="BREVO">Brevo</option>
-                <option value="MAILJET">Mailjet</option>
+                <option value="RESEND">Resend</option>
               </select>
             </label>
             <label class="flex flex-col gap-1.5">
@@ -190,15 +190,11 @@
             </label>
             <label class="flex flex-col gap-1.5">
               <span class="label-text font-medium">API 地址</span>
-              <input v-model="configForm.apiBaseUrl" class="input input-bordered w-full" :placeholder="configForm.apiProvider === 'BREVO' ? 'https://api.brevo.com/v3/smtp/email' : 'https://api.mailjet.com/v3.1/send'" />
+              <input v-model="configForm.apiBaseUrl" class="input input-bordered w-full" :placeholder="configForm.apiProvider === 'BREVO' ? 'https://api.brevo.com/v3/smtp/email' : 'https://api.resend.com'" />
             </label>
             <label class="flex flex-col gap-1.5">
               <span class="label-text font-medium">API Key</span>
-              <SecretInput v-model="configForm.apiKey" />
-            </label>
-            <label class="flex flex-col gap-1.5">
-              <span class="label-text font-medium">Secret Key</span>
-              <SecretInput v-model="configForm.secretKey" :disabled="configForm.apiProvider !== 'MAILJET'" :placeholder="configForm.apiProvider === 'MAILJET' ? 'Mailjet Secret Key' : 'Brevo 不需要该字段'" />
+              <SecretInput v-model="configForm.apiKey" :placeholder="configForm.apiProvider === 'RESEND' ? 're_xxxxxxxxx' : ''" />
             </label>
             <label class="flex flex-col gap-1.5">
               <span class="label-text font-medium">超时(ms)</span>
@@ -359,43 +355,47 @@
           <span class="text-sm text-base-content/60">共 {{ logList.length }} 条记录</span>
           <AppButton size="sm" variant="danger" :disabled="!logList.length" @click="showClearConfirm = true">清除日志</AppButton>
         </div>
-        <div class="overflow-x-auto">
-          <table class="table table-zebra">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>时间</th>
-                <th>分类</th>
-                <th>邮箱名称</th>
-                <th>场景</th>
-                <th>状态</th>
-                <th>收件人</th>
-                <th>主题</th>
-                <th>触发来源</th>
-                <th>备注</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="!logList.length"><td colspan="10" class="text-center text-base-content/60">暂无邮件日志</td></tr>
-              <tr v-for="(log, index) in logList" :key="log.id">
-                <th>{{ index + 1 }}</th>
-                <td class="whitespace-nowrap">{{ formatDate(log.createdAt) }}</td>
-                <td class="whitespace-nowrap">{{ getChannelLabel(log.provider) }}</td>
-                <td class="whitespace-nowrap">{{ configs.find(c => c.provider === log.provider)?.name || '-' }}</td>
-                <td class="whitespace-nowrap">{{ getSceneLabel(log.scene) }}</td>
-                <td>
-                  <StatusTag class="whitespace-nowrap" :type="log.status === 'SUCCESS' ? 'success' : 'danger'">
-                    {{ log.status === 'SUCCESS' ? '成功' : '失败' }}
-                  </StatusTag>
-                </td>
-                <td class="whitespace-nowrap">{{ log.toEmail }}</td>
-                <td class="max-w-xs truncate" :title="log.subject">{{ log.subject }}</td>
-                <td class="whitespace-nowrap">{{ log.triggeredBy || '-' }}</td>
-                <td class="max-w-xs truncate" :title="log.error || log.messageId || ''">{{ log.error || log.messageId || '-' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          :columns="logColumns"
+          :rows="paginatedLogs"
+          :total="logList.length"
+          :page="currentLogPage"
+          :page-size="LOG_PAGE_SIZE"
+          @update:page="currentLogPage = $event"
+        >
+          <template #index="{ row }">
+            {{ logList.indexOf(row) + 1 }}
+          </template>
+          <template #createdAt="{ value }">
+            <span class="whitespace-nowrap">{{ formatDate(value) }}</span>
+          </template>
+          <template #provider="{ value }">
+            <span class="whitespace-nowrap">{{ getChannelLabel(value) }}</span>
+          </template>
+          <template #configName="{ row }">
+            <span class="whitespace-nowrap">{{ configs.find(c => c.provider === row.provider)?.name || '-' }}</span>
+          </template>
+          <template #scene="{ value }">
+            <span class="whitespace-nowrap">{{ getSceneLabel(value) }}</span>
+          </template>
+          <template #status="{ value }">
+            <StatusTag class="whitespace-nowrap" :type="value === 'SUCCESS' ? 'success' : 'danger'">
+              {{ value === 'SUCCESS' ? '成功' : '失败' }}
+            </StatusTag>
+          </template>
+          <template #toEmail="{ value }">
+            <span class="whitespace-nowrap">{{ value }}</span>
+          </template>
+          <template #subject="{ value }">
+            <span class="max-w-xs truncate" :title="value">{{ value }}</span>
+          </template>
+          <template #triggeredBy="{ value }">
+            <span class="whitespace-nowrap">{{ value || '-' }}</span>
+          </template>
+          <template #note="{ row }">
+            <span class="max-w-xs truncate" :title="row.error || row.messageId || ''">{{ row.error || row.messageId || '-' }}</span>
+          </template>
+        </DataTable>
       </div>
     </section>
 
@@ -438,8 +438,22 @@
               <textarea v-model="activeTemplate.content" class="textarea textarea-bordered w-full font-mono text-sm leading-tight" rows="8"></textarea>
             </label>
 
+            <!-- 可用变量提示 -->
+            <div class="border border-base-300 rounded-lg p-4 bg-base-200/50">
+              <div class="flex flex-col gap-3">
+                <div class="text-sm font-medium text-base-content/70">可用变量：</div>
+                <div class="flex flex-wrap gap-2">
+                  <code v-for="variable in getTemplateVariables(activeTemplate.scene)" :key="variable.name" class="px-3 py-1.5 bg-base-100 border border-base-300 rounded text-sm font-mono" :title="variable.description">
+                    <span v-text="'{{' + variable.name + '}}'"></span>
+                    <span class="text-xs text-base-content/60 ml-2">{{ variable.description }}</span>
+                  </code>
+                </div>
+              </div>
+            </div>
+
             <div class="flex items-center gap-3">
               <AppButton variant="primary" :loading="savingTemplate === activeTemplate.scene" @click="handleSaveTemplate(activeTemplate.scene)">保存模板</AppButton>
+              <AppButton variant="outline" :loading="resettingTemplate === activeTemplate.scene" @click="handleResetTemplate(activeTemplate.scene)">恢复默认</AppButton>
               <span v-if="templateMessages[activeTemplate.scene]" class="text-sm" :class="templateErrors[activeTemplate.scene] ? 'text-error' : 'text-success'">
                 {{ templateMessages[activeTemplate.scene] }}
               </span>
@@ -457,13 +471,15 @@ import AppButton from "../../../components/AppButton.vue";
 import SecretInput from "../../../components/SecretInput.vue";
 import StatusTag from "../../../components/StatusTag.vue";
 import ConfirmDialog from "../../../components/ConfirmDialog.vue";
+import DataTable from "../../../components/DataTable.vue";
 import { normalizeTelefuncError } from "../../../lib/app-error";
-import { reactive, ref, computed, useTemplateRef } from "vue";
+import { reactive, ref, computed, watch, useTemplateRef } from "vue";
 import { useData } from "vike-vue/useData";
 import { onSaveEmailConfig, onDeleteEmailConfig, onSaveEmailPushSettings, onActivateEmailProvider, onClearEmailLogs } from "./saveEmailConfig.telefunc";
-import { onSaveEmailTemplate } from "./saveEmailTemplate.telefunc";
+import { onSaveEmailTemplate, onResetEmailTemplate } from "./saveEmailTemplate.telefunc";
 import { onSendTestEmail } from "./sendTestEmail.telefunc";
 import type { Data } from "./+data";
+import { EMAIL_TEMPLATE_VARIABLES, type EmailScene } from "../../../modules/email/types";
 
 type MailboxItem = {
   id?: number;
@@ -477,7 +493,6 @@ type MailboxItem = {
   apiProvider?: string;
   apiBaseUrl?: string;
   apiKey?: string;
-  secretKey?: string;
   timeoutMs?: number;
   // SMTP fields
   smtpHost?: string;
@@ -503,8 +518,29 @@ const { configs, templates, logs: initialLogs, metrics, pushSettings: initialPus
 const activeTab = ref<"stats" | "config" | "list" | "template">("stats");
 const confirmRef = useTemplateRef<InstanceType<typeof ConfirmDialog>>("confirmRef");
 
-// ===================== Mailbox list =====================
+// ===================== Email logs =====================
 const logList = reactive([...initialLogs]);
+const currentLogPage = ref(1);
+const LOG_PAGE_SIZE = 20;
+
+const paginatedLogs = computed(() => {
+  const start = (currentLogPage.value - 1) * LOG_PAGE_SIZE;
+  const end = start + LOG_PAGE_SIZE;
+  return logList.slice(start, end);
+});
+
+const logColumns = [
+  { key: "index", label: "#" },
+  { key: "createdAt", label: "时间" },
+  { key: "provider", label: "分类" },
+  { key: "configName", label: "邮箱名称" },
+  { key: "scene", label: "场景" },
+  { key: "status", label: "状态" },
+  { key: "toEmail", label: "收件人" },
+  { key: "subject", label: "主题" },
+  { key: "triggeredBy", label: "触发来源" },
+  { key: "note", label: "备注" },
+];
 
 const mailboxList = reactive<MailboxItem[]>(
   Array.isArray(configs) ? configs.map((c: any) => ({ ...c })) : []
@@ -531,7 +567,8 @@ const activeTemplate = computed(() => {
   return templateList.find((t: any) => t.scene === activeTemplateScene.value) || templateList[0];
 });
 const savingTemplate = ref<"TEST" | "ORDER_PAID" | "DELIVERY_SUCCESS" | "DELIVERY_FAILED" | "">("");
-const templateMessages = reactive<Record<string, string>>({ TEST: "", ORDER_PAID: "", DELIVERY_SUCCESS: "", DELIVERY_FAILED: "" });
+const resettingTemplate = ref<"TEST" | "ORDER_PAID" | "DELIVERY_SUCCESS" | "DELIVERY_FAILED" | "">("");
+const templateMessages = reactive<Record<string, string>>({ TEST: "", ORDER_PAID: "", DELIVERY_SUCCESS: "", DELIVERY_FAILED: "", });
 const templateErrors = reactive<Record<string, boolean>>({ TEST: false, ORDER_PAID: false, DELIVERY_SUCCESS: false, DELIVERY_FAILED: false });
 
 // ===================== Config dialog =====================
@@ -548,10 +585,9 @@ interface ConfigFormState {
   fromName: string;
   replyTo: string;
   // API
-  apiProvider: "BREVO" | "MAILJET";
+  apiProvider: string;
   apiBaseUrl: string;
   apiKey: string;
-  secretKey: string;
   timeoutMs: number;
   // SMTP
   smtpHost: string;
@@ -576,7 +612,6 @@ function createEmptyForm(): ConfigFormState {
     apiProvider: "BREVO",
     apiBaseUrl: "https://api.brevo.com/v3/smtp/email",
     apiKey: "",
-    secretKey: "",
     timeoutMs: 10000,
     smtpHost: "",
     smtpPort: 587,
@@ -591,6 +626,23 @@ function createEmptyForm(): ConfigFormState {
 }
 
 const configForm = reactive<ConfigFormState>(createEmptyForm());
+
+// API 服务商默认地址映射
+const API_PROVIDER_URLS: Record<string, string> = {
+  BREVO: "https://api.brevo.com/v3/smtp/email",
+  RESEND: "https://api.resend.com",
+};
+
+// 切换 API 服务商时自动填充默认地址
+watch(
+  () => configForm.apiProvider,
+  (provider) => {
+    const defaultUrl = API_PROVIDER_URLS[provider];
+    if (defaultUrl && (!configForm.apiBaseUrl || Object.values(API_PROVIDER_URLS).includes(configForm.apiBaseUrl))) {
+      configForm.apiBaseUrl = defaultUrl;
+    }
+  },
+);
 
 function openCreateDialog() {
   editingId.value = null;
@@ -611,7 +663,6 @@ function openEditDialog(item: MailboxItem) {
     apiProvider: (item as any).apiProvider || "BREVO",
     apiBaseUrl: (item as any).apiBaseUrl || "",
     apiKey: (item as any).apiKey || "",
-    secretKey: (item as any).secretKey || "",
     timeoutMs: (item as any).timeoutMs || 10000,
     smtpHost: (item as any).smtpHost || "",
     smtpPort: (item as any).smtpPort || 587,
@@ -701,6 +752,10 @@ function getSceneLabel(scene: string) {
   return ({ TEST: "测试邮件", ORDER_PAID: "支付成功", DELIVERY_SUCCESS: "发货成功", DELIVERY_FAILED: "发货失败" } as Record<string, string>)[scene] || scene;
 }
 
+function getTemplateVariables(scene: EmailScene) {
+  return EMAIL_TEMPLATE_VARIABLES[scene] || [];
+}
+
 function getChannelLabel(provider: string) {
   return ({ API: "API", SMTP: "SMTP", CLOUDFLARE: "CloudFlare" } as Record<string, string>)[provider] || provider;
 }
@@ -750,7 +805,6 @@ async function handleSaveConfig() {
       payload.apiProvider = configForm.apiProvider;
       payload.apiBaseUrl = configForm.apiBaseUrl;
       payload.apiKey = configForm.apiKey;
-      payload.secretKey = configForm.secretKey;
       payload.timeoutMs = configForm.timeoutMs;
     } else if (configForm.provider === "SMTP") {
       payload.smtpHost = configForm.smtpHost;
@@ -862,6 +916,40 @@ async function handleSaveTemplate(scene: "TEST" | "ORDER_PAID" | "DELIVERY_SUCCE
     templateMessages[scene] = normalizeTelefuncError(error, "保存失败");
   } finally {
     savingTemplate.value = "";
+  }
+}
+
+async function handleResetTemplate(scene: EmailScene) {
+  const confirmed = await confirmRef.value?.confirm({
+    title: "恢复默认模板",
+    message: "确定要恢复为默认模板吗？\n\n当前的自定义内容将被覆盖，立即生效。",
+    confirmText: "确定恢复",
+    cancelText: "取消",
+    danger: true,
+  });
+
+  if (!confirmed) return;
+
+  resettingTemplate.value = scene;
+  templateMessages[scene] = "";
+  templateErrors[scene] = false;
+
+  try {
+    const result = await onResetEmailTemplate(scene);
+    const target = templateList.find((item: any) => item.scene === scene);
+    if (target) {
+      Object.assign(target, result);
+    }
+    templateMessages[scene] = "已恢复为默认模板（已保存）";
+    // 3秒后清空消息
+    setTimeout(() => {
+      templateMessages[scene] = "";
+    }, 3000);
+  } catch (error) {
+    templateErrors[scene] = true;
+    templateMessages[scene] = normalizeTelefuncError(error, "恢复失败");
+  } finally {
+    resettingTemplate.value = "";
   }
 }
 </script>
